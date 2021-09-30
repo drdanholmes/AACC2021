@@ -1,0 +1,89 @@
+---
+title: "Interactive HTML Report"
+author: "Daniel T. Holmes, MD"
+date: "29/09/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+## This is a section header
+
+We can insert code into named chunks of R code and expose them or not using the parameter `echo = TRUE` or `echo = FALSE`.
+
+```{r readqcdata, echo = TRUE}
+library(readr)
+library(dplyr)
+library(lubridate)
+qc_data <- read_csv("qc_data.csv")
+```
+
+## Inline calculations
+
+There are `r nrow(qc_data)` QC results in this file for the following qc codes: `r paste(unique(qc_data$test_code), sep = ",")` for hospitals `r paste(unique(qc_data$hospital), sep = " and ")`. The date range is from `r min(date(qc_data$date_performed))` to `r max(date(qc_data$date_performed))`.
+
+## Tabular Summary of QC Data
+
+Creating interactive tables is easy with the **DT** package.
+
+```{r summary}
+sum_table <- qc_data %>%
+  group_by(hospital, instr_code, test_code, qc_name) %>%
+  summarise(obs_mean = round(mean(result),1), obs_sd = round(sd(result),1), obs_cv = round(obs_sd/obs_mean*100, 1), set_mean = round(mean[1],1), set_sd = sd[1], set_cv = round(set_sd/set_mean*100,1))
+
+library(DT)
+datatable(sum_table)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+## Graphical Summary of Our Creatinine QC
+
+Creating interactive figures is easy with the **plotly** package.
+
+```{r ljplotcr1, fig.height=4, fig.width=8}
+library(lubridate)
+library(ggplot2)
+library(plotly)
+
+cr_stats<- qc_data %>%
+  filter(hospital == "SPH", test_code == "CRQ") %>%
+  group_by(qc_name) %>%
+  summarise(obs_mean = round(mean(result),1), obs_sd = round(sd(result),1), obs_cv = round(obs_sd/obs_mean*100, 1), set_mean = round(mean[1],1), set_sd = sd[1], set_cv = round(set_sd/set_mean*100,1))
+
+cr1 <- qc_data %>%
+  mutate(rundate = date(ymd_hms(date_performed))) %>%
+  filter(hospital == "SPH", test_code == "CRQ", qc_name == "CH1") %>%
+  group_by(qc_name, rundate) %>% 
+  ggplot(aes(x = rundate,y = result)) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = cr_stats$obs_mean[1], col = "blue") + 
+  geom_hline(yintercept = cr_stats$obs_mean[1] + 1.96*cr_stats$obs_sd[1], col = "red", linetype = "dashed") + 
+  geom_hline(yintercept = cr_stats$obs_mean[1] - 1.96*cr_stats$obs_sd[1], col = "red", linetype = "dashed") + 
+  ylim(c(cr_stats$obs_mean[1] - 3*cr_stats$obs_sd[1],cr_stats$obs_mean[1] + 3*cr_stats$obs_sd[1])) +
+  ggtitle("Creatinine Level 1") +
+  facet_wrap(~instr_code)
+
+ggplotly(cr1)
+```
+
+```{r ljplotcr2, fig.height=4, fig.width=8}
+cr2 <- qc_data %>%
+  mutate(rundate = date(ymd_hms(date_performed))) %>%
+  filter(hospital == "SPH", test_code == "CRQ", qc_name == "CH2") %>%
+  group_by(qc_name, rundate) %>% 
+  ggplot(aes(x = rundate,y = result)) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = cr_stats$obs_mean[2], col = "blue") + 
+  geom_hline(yintercept = cr_stats$obs_mean[2] + 1.96*cr_stats$obs_sd[2], col = "red", linetype = "dashed") + 
+  geom_hline(yintercept = cr_stats$obs_mean[2] - 1.96*cr_stats$obs_sd[2], col = "red", linetype = "dashed") +
+  ylim(c(cr_stats$obs_mean[2] - 3*cr_stats$obs_sd[2],cr_stats$obs_mean[2] + 3*cr_stats$obs_sd[2])) +
+  ggtitle("Creatinine Level 2") +
+  facet_wrap(~instr_code)
+
+ggplotly(cr2)
+```
